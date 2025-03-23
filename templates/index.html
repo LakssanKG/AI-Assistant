@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Virtual Legal Assistant</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #0f0f1a;
+            color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            width: 80%;
+            max-width: 1000px;
+            display: flex;
+            gap: 20px;
+        }
+        .box {
+            background: #1c1c2e;
+            padding: 20px;
+            border-radius: 10px;
+            width: 50%;
+        }
+        .header {
+            background: #4c2dc1;
+            padding: 10px;
+            font-weight: bold;
+            border-radius: 8px 8px 0 0;
+            text-align: center;
+        }
+        .upload-box {
+            border: 2px dashed #666;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+        }
+        .upload-box input {
+            display: none;
+        }
+        .upload-box label {
+            display: block;
+            cursor: pointer;
+            background: #5a35e0;
+            padding: 10px;
+            border-radius: 5px;
+            color: white;
+        }
+        .summary-container {
+            background: #151527;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            height: 150px; /* Fixed height */
+            overflow-y: auto; /* Scrollable */
+            border: 1px solid #4c2dc1;
+        }
+        #downloadBtn {
+            display: none;
+            margin-top: 10px;
+            width: 100%;
+            background: #5a35e0;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .chat-container {
+            width: 50%;
+            background: #1c1c2e;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        .chat-header {
+            background: #4c2dc1;
+            padding: 15px;
+            font-weight: bold;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .chat-header img {
+            width: 20px;
+            height: 20px;
+        }
+        .chat-body {
+            background: #151527;
+            padding: 20px;
+            min-height: 300px;
+            border-radius: 8px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .chat-body p {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background: #5a35e0;
+            align-self: flex-end;
+            text-align: right;
+        }
+        .bot-message {
+            background: #33334d;
+            align-self: flex-start;
+        }
+        .chat-footer {
+            display: flex;
+            padding: 10px;
+            background: #151527;
+            border-radius: 0 0 8px 8px;
+        }
+        .chat-footer input {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background: #2a2a40;
+            color: white;
+            outline: none;
+        }
+        .send-btn {
+            background: #5a35e0;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        .send-btn img {
+            width: 20px;
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="box">
+            <div class="header">Document Manager</div>
+            <div class="upload-box">
+                <input type="file" id="fileInput">
+                <label for="fileInput">📤 Select Document</label>
+                <p>Upload your legal document to get started</p>
+                <p id="fileName" style="color: #ccc; font-style: italic;"></p> <!-- File name display -->
+            </div>
+            <h2>Summary:</h2>
+            <div class="summary-container">
+                <p id="summary"></p>
+            </div>
+            <button id="downloadBtn" onclick="downloadPDF()">Download Summary</button>
+        </div>
+
+        <div class="chat-container">
+            <div class="chat-header">
+                <img src="https://img.icons8.com/ios/50/ffffff/chat.png" alt="Chat Icon">
+                Legal Assistant Chat
+            </div>
+            <div class="chat-body" id="chatBody">
+                <p class="bot-message">👋 Welcome to your Legal Assistant<br>Upload a document and ask questions about it.</p>
+            </div>
+            <div class="chat-footer">
+                <input type="text" id="queryInput" placeholder="Ask about the document...">
+                <button class="send-btn" onclick="askGPT()">
+                    <img src="https://img.icons8.com/ios-filled/50/ffffff/paper-plane.png" alt="Send">
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById("fileInput").addEventListener("change", async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Display the selected file name
+    document.getElementById("fileName").innerText = `📄 ${file.name}`;
+
+    // Show loading message
+    const summaryContainer = document.getElementById("summary");
+    summaryContainer.innerText = "⏳ Processing document, please wait...";
+    
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const response = await fetch("/upload", { method: "POST", body: formData });
+        const data = await response.json();
+
+        // Update summary content
+        summaryContainer.innerText = data.summary || "Error processing file.";
+
+        if (data.summary) {
+            document.getElementById("downloadBtn").style.display = "block";
+        }
+    } catch (error) {
+        summaryContainer.innerText = "❌ Failed to process document.";
+    }
+});
+
+
+        async function askGPT() {
+    const queryInput = document.getElementById("queryInput");
+    const chatBody = document.getElementById("chatBody");
+    const query = queryInput.value.trim();
+    if (!query) return;
+
+    // Add user's message
+    const userMessage = document.createElement("p");
+    userMessage.classList.add("user-message");
+    userMessage.innerText = query;
+    chatBody.appendChild(userMessage);
+    chatBody.scrollTop = chatBody.scrollHeight;
+
+    // Clear the input field
+    queryInput.value = "";
+
+    // Add loading message
+    const loadingMessage = document.createElement("p");
+    loadingMessage.classList.add("bot-message");
+    loadingMessage.innerText = "⏳ Loading...";
+    chatBody.appendChild(loadingMessage);
+    chatBody.scrollTop = chatBody.scrollHeight;
+
+    try {
+        const response = await fetch("/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: query })
+        });
+
+        const data = await response.json();
+
+        // Replace loading message with actual response
+        loadingMessage.innerText = data.response || "Error processing query.";
+    } catch (error) {
+        loadingMessage.innerText = "⚠️ Error fetching response.";
+    }
+
+    chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setFontSize(16);
+            doc.text("Document Summary", 10, 20);
+            
+            const summaryText = document.getElementById("summary").innerText;
+            doc.setFontSize(12);
+            doc.text(summaryText, 10, 30, { maxWidth: 180 });
+
+            doc.save("summary.pdf");
+        }
+    </script>
+</body>
+</html>
