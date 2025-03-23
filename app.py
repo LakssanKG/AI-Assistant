@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify, render_template
 from azure.storage.blob import BlobServiceClient
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.core.credentials import AzureKeyCredential
+from azure.cognitiveservices.speech import SpeechConfig, SpeechSynthesizer, AudioConfig
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -28,6 +29,9 @@ API_KEY = "6k6JjMIXFU4mkspzu19LZY3iruhcixrjHGWAvsyfWc4OSRpu2tpuJQQJ99BCACHYHv6XJ
 API_VERSION = "2024-05-01-preview"
 AZURE_ENDPOINT = "https://cben-m8j7ldga-eastus2.openai.azure.com/"
 AZURE_DEPLOYMENT = "gpt-4"
+
+AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
+AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION")
 
 if not all([AZURE_STORAGE_CONNECTION_STRING, DOCUMENT_INTELLIGENCE_ENDPOINT, DOCUMENT_INTELLIGENCE_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY]):
     logging.error("One or more Azure credentials are missing. Please set environment variables.")
@@ -94,6 +98,27 @@ def ask_gpt(prompt, max_retries=5):
 
     return "Error: Too many requests. Please try again later."
 
+def text_to_speech(text, output_filename="summary_audio.wav"):
+    try:
+        speech_config = SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
+        temp_dir = tempfile.gettempdir()
+        audio_path = os.path.join(temp_dir, output_filename)
+        
+        audio_config = AudioConfig(filename=audio_path)
+        synthesizer = SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
+
+        logging.info("Synthesizing speech...")
+        synthesizer.speak_text_async(text).get()
+
+        # Upload the audio file to Azure Blob Storage
+        audio_url = upload_file_to_blob(audio_path, container_name="audio-summaries")
+        return audio_url
+    except Exception as e:
+        logging.error(f"Error generating speech: {e}")
+        raise
+
+
+
 # Flask Routes
 @app.route("/")
 def home():
@@ -119,8 +144,9 @@ def upload_file():
         file_url = upload_file_to_blob(file_path)
         extracted_text = extract_text(file_url)
         summary = ask_gpt(f"Summarize this document: {extracted_text}")
+        audio_url = text_to_speech(summary)
+        return jsonify({"filename": file.filename, "summary": summary, "audio_url": audio_url})
 
-        return jsonify({"filename": file.filename, "summary": summary})
     except Exception as e:
         logging.error(f"Internal Server Error: {e}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
