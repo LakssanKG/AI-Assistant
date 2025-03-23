@@ -7,28 +7,31 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #0f0f1a;
-            color: white;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .container {
-            width: 80%;
-            max-width: 1000px;
-            display: flex;
-            gap: 20px;
-        }
-        .box {
-            background: #1c1c2e;
-            padding: 20px;
-            border-radius: 10px;
-            width: 50%;
-        }
+        font-family: Arial, sans-serif;
+        background-color: #0f0f1a;
+        color: white;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+    }
+    .container {
+        width: 80%;
+        max-width: 1000px;
+        display: flex;
+        gap: 20px;
+        align-items: stretch; /* Ensures both sections stretch equally */
+    }
+    .box, .chat-container {
+        background: #1c1c2e;
+        padding: 20px;
+        border-radius: 10px;
+        flex: 1; /* Allows both sections to stretch evenly */
+        display: flex;
+        flex-direction: column;
+    }
         .header {
             background: #4c2dc1;
             padding: 10px;
@@ -57,27 +60,38 @@
             background: #151527;
             padding: 15px;
             border-radius: 8px;
-            margin-top: 10px;
-            height: 150px; /* Fixed height */
+            margin-top: 5px;
+            height: 100px; /* Fixed height */
             overflow-y: auto; /* Scrollable */
             border: 1px solid #4c2dc1;
         }
-        #downloadBtn {
+
+        #audioPlayer {
             display: none;
             margin-top: 10px;
             width: 100%;
+        }
+        .button-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .btn {
+            flex: 1;
             background: #5a35e0;
             color: white;
             padding: 10px;
             border-radius: 5px;
             cursor: pointer;
             text-align: center;
+            border: none;
         }
-        .chat-container {
-            width: 50%;
-            background: #1c1c2e;
-            border-radius: 10px;
-            padding: 20px;
+        .btn a {
+            color: white;
+            text-decoration: none;
+            display: block;
+            width: 100%;
+            height: 100%;
         }
         .chat-header {
             background: #4c2dc1;
@@ -93,13 +107,13 @@
             height: 20px;
         }
         .chat-body {
-            background: #151527;
-            padding: 20px;
-            min-height: 300px;
-            border-radius: 8px;
-            overflow-y: auto;
-            max-height: 300px;
-        }
+        background: #151527;
+        padding: 20px;
+        height: 300px;
+        border-radius: 8px;
+        overflow-y: auto;
+        flex-grow: 1; /* Adjusts dynamically based on document manager */
+    }
         .chat-body p {
             padding: 10px;
             border-radius: 5px;
@@ -153,15 +167,18 @@
                 <input type="file" id="fileInput">
                 <label for="fileInput">📤 Select Document</label>
                 <p>Upload your legal document to get started</p>
-                <p id="fileName" style="color: #ccc; font-style: italic;"></p> <!-- File name display -->
+                <p id="fileName" style="color: #ccc; font-style: italic;"></p>
             </div>
             <h2>Summary:</h2>
             <div class="summary-container">
                 <p id="summary"></p>
             </div>
-            <button id="downloadBtn" onclick="downloadPDF()">Download Summary</button>
+            <audio id="audioPlayer" controls></audio>
+            <div class="button-container">
+                <button id="downloadSummaryBtn" class="btn" onclick="downloadPDF()" style="display: none;">Download Summary</button>
+                <button id="downloadAudioBtn" class="btn" style="display: none;"><a id="audioDownloadLink" href="#" download>Download Audio</a></button>
+            </div>
         </div>
-
         <div class="chat-container">
             <div class="chat-header">
                 <img src="https://img.icons8.com/ios/50/ffffff/chat.png" alt="Chat Icon">
@@ -181,35 +198,52 @@
 
     <script>
         document.getElementById("fileInput").addEventListener("change", async function(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+            const file = event.target.files[0];
+            if (!file) return;
 
-    // Display the selected file name
-    document.getElementById("fileName").innerText = `📄 ${file.name}`;
+            document.getElementById("fileName").innerText = `📄 ${file.name}`;
+            const summaryContainer = document.getElementById("summary");
+            summaryContainer.innerText = "⏳ Processing document, please wait...";
+            document.getElementById("audioPlayer").style.display = "none";
+            document.getElementById("downloadSummaryBtn").style.display = "none";
+            document.getElementById("downloadAudioBtn").style.display = "none";
+            
+            const formData = new FormData();
+            formData.append("file", file);
 
-    // Show loading message
-    const summaryContainer = document.getElementById("summary");
-    summaryContainer.innerText = "⏳ Processing document, please wait...";
-    
-    const formData = new FormData();
-    formData.append("file", file);
+            try {
+                const response = await fetch("/upload", { method: "POST", body: formData });
+                const data = await response.json();
+                
+                summaryContainer.innerText = data.summary || "Error processing file.";
+                if (data.summary) {
+                    document.getElementById("downloadSummaryBtn").style.display = "block";
+                }
 
-    try {
-        const response = await fetch("/upload", { method: "POST", body: formData });
-        const data = await response.json();
+                if (data.audio_url) {
+                    const audioPlayer = document.getElementById("audioPlayer");
+                    audioPlayer.src = data.audio_url;
+                    audioPlayer.style.display = "block";
 
-        // Update summary content
-        summaryContainer.innerText = data.summary || "Error processing file.";
+                    const audioDownloadLink = document.getElementById("audioDownloadLink");
+                    audioDownloadLink.href = data.audio_url;
+                    document.getElementById("downloadAudioBtn").style.display = "block";
+                }
+            } catch (error) {
+                summaryContainer.innerText = "❌ Failed to process document.";
+            }
+        });
 
-        if (data.summary) {
-            document.getElementById("downloadBtn").style.display = "block";
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const summaryText = document.getElementById("summary").innerText;
+
+            doc.text("Document Summary", 10, 10);
+            doc.text(summaryText, 10, 20);
+            doc.save("summary.pdf");
         }
-    } catch (error) {
-        summaryContainer.innerText = "❌ Failed to process document.";
-    }
-});
-
-
+    
         async function askGPT() {
     const queryInput = document.getElementById("queryInput");
     const chatBody = document.getElementById("chatBody");
@@ -245,26 +279,11 @@
         // Replace loading message with actual response
         loadingMessage.innerText = data.response || "Error processing query.";
     } catch (error) {
-        loadingMessage.innerText = "⚠️ Error fetching response.";
+        loadingMessage.innerText = "⚠ Error fetching response.";
     }
 
     chatBody.scrollTop = chatBody.scrollHeight;
 }
-
-
-        function downloadPDF() {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            doc.setFontSize(16);
-            doc.text("Document Summary", 10, 20);
-            
-            const summaryText = document.getElementById("summary").innerText;
-            doc.setFontSize(12);
-            doc.text(summaryText, 10, 30, { maxWidth: 180 });
-
-            doc.save("summary.pdf");
-        }
     </script>
 </body>
 </html>
